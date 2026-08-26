@@ -21,7 +21,13 @@
     Compass,
     PanelLeftClose,
     PanelLeftOpen,
-    X
+    X,
+    Shuffle,
+    Edit3,
+    Plus,
+    Trash2,
+    Save,
+    Check
   } from '@lucide/svelte';
   import { ensureWasmInitialized, engineInstance, loadPreset } from './lib/engine';
   import { fetchOsmNetworkAroundPoint, searchNearbySchools } from './lib/overpass';
@@ -98,6 +104,8 @@
   let maxSharedOverlapPct = $state<number>(40);
   let straightDistStepIndex = $state<number>(5);
   let catchmentStepIndex = $state<number>(5);
+  let randomSeed = $state<number>(42);
+  let isEditingRoute = $state<boolean>(false);
 
   // Analysis Outputs
   let analysisResult = $state<BiciAnalysisOutput | null>(null);
@@ -542,7 +550,8 @@
         max_route_distance_m: catchmentRadiusM * 1.5,
         circuity: circuity,
         max_straight_line_dist_m: maxStraightLineDistM,
-        max_shared_overlap_pct: maxSharedOverlapPct
+        max_shared_overlap_pct: maxSharedOverlapPct,
+        seed: randomSeed
       };
 
       const result = engineInstance.runAnalysis(config);
@@ -564,6 +573,7 @@
         if (actualSource) actualSource.setData(emptyFeatureCollection());
 
         updateTimetableStopsLayer();
+        if (isEditingRoute) updateEditMarkers();
       }
 
       statusMessage = `Analysis complete! Generated ${result.candidate_routes.length} candidate bike buses.`;
@@ -573,6 +583,197 @@
     } finally {
       loading = false;
     }
+  }
+
+  function parseHhmmToSecs(hhmm: string): number {
+    const parts = hhmm.trim().split(':');
+    if (parts.length === 2) {
+      const h = parseInt(parts[0], 10) || 8;
+      const m = parseInt(parts[1], 10) || 45;
+      return h * 3600 + m * 60;
+    }
+    return 8 * 3600 + 45 * 60;
+  }
+
+  function secsToHhmm(secs: number): string {
+    const totalMins = Math.round(secs / 60);
+    const positiveMins = ((totalMins % (24 * 60)) + (24 * 60)) % (24 * 60);
+    const h = Math.floor(positiveMins / 60);
+    const m = positiveMins % 60;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+  }
+
+  function haversineDistanceM(lng1: number, lat1: number, lng2: number, lat2: number): number {
+    const R = 6371000;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLng = ((lng2 - lng1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLng / 2) *
+        Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  let editMarkers: maplibregl.Marker[] = [];
+
+  function updateEditMarkers() {
+    editMarkers.forEach((m) => m.remove());
+    editMarkers = [];
+    if (!map || !isEditingRoute || !analysisResult) return;
+
+    const currentTt = analysisResult.timetables.find((t) => t.route_rank === activeTimetableRoute);
+    if (!currentTt) return;
+
+    const rank = activeTimetableRoute;
+    const color = ROUTE_COLORS[rank - 1] || '#8b5cf6';
+
+    currentTt.stops.forEach((stop, idx) => {
+      const el = document.createElement('div');
+      el.className = 'edit-stop-marker';
+      el.innerHTML = `<span>${stop.stop_label}</span>`;
+      el.style.background = color;
+      el.style.color = '#fff';
+      el.style.fontWeight = 'bold';
+      el.style.fontSize = '10px';
+      el.style.width = '26px';
+      el.style.height = '26px';
+      el.style.borderRadius = '50%';
+      el.style.display = 'flex';
+      el.style.alignItems = 'center';
+      el.style.justifyContent = 'center';
+      el.style.border = '2px solid #fff';
+      el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.5)';
+      el.style.cursor = 'grab';
+
+      const marker = new maplibregl.Marker({ element: el, draggable: true })
+        .setLngLat([stop.lng, stop.lat])
+        .addTo(map!);
+
+      marker.on('dragend', () => {
+        const newLngLat = marker.getLngLat();
+        stop.lng = newLngLat.lng;
+        stop.lat = newLngLat.lat;
+        recalculateTimetable(currentTt);
+        updateTimetableStopsLayer();
+      });
+
+      editMarkers.push(marker);
+    });
+  }
+
+  function recalculateTimetable(tt: RouteTimetable) {
+    if (!tt || tt.stops.length < 2) return;
+    const speedMps = (groupSpeedKmh * 1000.0) / 3600.0;
+
+    let cumDist = 0;
+    tt.stops[0].cumulative_dist_m = 0;
+    for (let i = 0; i < tt.stops.length - 1; i++) {
+      const d = haversineDistanceM(tt.stops[i].lng, tt.stops[i].lat, tt.stops[i + 1].lng, tt.stops[i + 1].lat);
+      tt.stops[i].distance_to_next_m = Math.round(d);
+      cumDist += d;
+      tt.stops[i + 1].cumulative_dist_m = Math.round(cumDist);
+    }
+    tt.stops[tt.stops.length - 1].distance_to_next_m = 0;
+    tt.total_distance_m = Math.round(cumDist);
+
+    const targetSecs = parseHhmmToSecs(targetArrivalTime);
+    const n = tt.stops.length;
+    let currentSecs = targetSecs;
+    tt.stops[n - 1].arrival_time = secsToHhmm(currentSecs);
+    tt.stops[n - 1].departure_time = secsToHhmm(currentSecs);
+
+    for (let i = n - 2; i >= 0; i--) {
+      const travelSecs = tt.stops[i].distance_to_next_m / speedMps;
+      currentSecs -= travelSecs;
+      tt.stops[i].departure_time = secsToHhmm(currentSecs);
+      if (i > 0) {
+        currentSecs -= dwellTimeMins * 60;
+        tt.stops[i].arrival_time = secsToHhmm(currentSecs);
+      } else {
+        tt.stops[i].arrival_time = tt.stops[i].departure_time;
+      }
+    }
+
+    tt.departure_time = tt.stops[0].departure_time;
+    tt.total_duration_mins = Math.round((targetSecs - currentSecs) / 60);
+
+    let cumPupils = 0;
+    for (const s of tt.stops) {
+      cumPupils += s.boarding_students;
+      s.cumulative_students = cumPupils;
+    }
+  }
+
+  function toggleRouteEditor() {
+    isEditingRoute = !isEditingRoute;
+    updateEditMarkers();
+  }
+
+  function removeStopFromActiveRoute(stopIndex: number) {
+    if (!analysisResult) return;
+    const currentTt = analysisResult.timetables.find((t) => t.route_rank === activeTimetableRoute);
+    if (!currentTt || currentTt.stops.length <= 2 || stopIndex >= currentTt.stops.length - 1) return;
+
+    currentTt.stops.splice(stopIndex, 1);
+
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T'];
+    currentTt.stops.forEach((s, idx) => {
+      if (idx === currentTt.stops.length - 1) {
+        s.stop_label = 'Arr';
+      } else {
+        s.stop_label = `${activeTimetableRoute}${letters[idx] || 'S'}`;
+      }
+    });
+
+    recalculateTimetable(currentTt);
+    updateTimetableStopsLayer();
+    updateEditMarkers();
+  }
+
+  function addPickupStopToActiveRoute() {
+    if (!analysisResult || !map) return;
+    const currentTt = analysisResult.timetables.find((t) => t.route_rank === activeTimetableRoute);
+    if (!currentTt || currentTt.stops.length < 2) return;
+
+    const center = map.getCenter();
+    const insertIdx = Math.max(1, currentTt.stops.length - 1);
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T'];
+
+    const newStop: any = {
+      stop_id: `R${activeTimetableRoute}_custom_${Date.now()}`,
+      stop_name: `Custom Pickup Stop near Map Center`,
+      stop_label: `${activeTimetableRoute}${letters[insertIdx] || 'S'}`,
+      lng: center.lng,
+      lat: center.lat,
+      cumulative_dist_m: 0,
+      distance_to_next_m: 0,
+      arrival_time: '08:30',
+      departure_time: '08:31',
+      boarding_students: 5,
+      cumulative_students: 0
+    };
+
+    currentTt.stops.splice(insertIdx, 0, newStop);
+
+    currentTt.stops.forEach((s, idx) => {
+      if (idx === currentTt.stops.length - 1) {
+        s.stop_label = 'Arr';
+      } else {
+        s.stop_label = `${activeTimetableRoute}${letters[idx] || 'S'}`;
+      }
+    });
+
+    recalculateTimetable(currentTt);
+    updateTimetableStopsLayer();
+    updateEditMarkers();
+  }
+
+  function handleRegenerate() {
+    randomSeed = Math.floor(Math.random() * 100000) + 1;
+    fetchAndAnalyzeArea();
   }
 
   async function handleSearchSchools() {
@@ -757,6 +958,11 @@
         <Sparkles class="w-4 h-4" />
         Run Live Analysis
       {/if}
+    </button>
+
+    <button class="btn btn-secondary" onclick={handleRegenerate} disabled={loading} title="Explore alternative bike bus corridors and pupil pickup combinations">
+      <Shuffle class="w-4 h-4" style="color: #a855f7;" />
+      Regenerate
     </button>
 
     <button class="btn btn-secondary" onclick={exportGeoJson} disabled={!analysisResult}>
@@ -1047,7 +1253,7 @@
         <div class="card">
           <div class="card-title">Timetable Parameters</div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
             <div class="control-group">
               <label class="control-label" for="target-arrival">School Arrival Time</label>
               <input id="target-arrival" type="time" bind:value={targetArrivalTime} onchange={fetchAndAnalyzeArea} />
@@ -1057,6 +1263,32 @@
               <input id="group-speed" type="number" step="0.5" min="6" max="18" bind:value={groupSpeedKmh} onchange={fetchAndAnalyzeArea} />
             </div>
           </div>
+
+          <div class="control-group">
+            <label class="control-label" for="dwell-time">
+              <span>Time for collection at each stop</span>
+              <span class="control-value">{dwellTimeMins < 1 ? Math.round(dwellTimeMins * 60) + ' sec' : dwellTimeMins.toFixed(1) + ' min' + (dwellTimeMins > 1 ? 's' : '')}</span>
+            </label>
+            <input
+              id="dwell-time"
+              type="range"
+              min="0.5"
+              max="4.0"
+              step="0.5"
+              bind:value={dwellTimeMins}
+              onchange={fetchAndAnalyzeArea}
+            />
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 3px; line-height: 1.35;">
+              Pickup collection buffer allocated at each scheduled stop to gather, register, and safely board pupils.
+            </div>
+          </div>
+
+          <div style="margin-top: 14px;">
+            <button class="btn btn-secondary btn-block" onclick={handleRegenerate} disabled={loading}>
+              <Shuffle class="w-4 h-4" style="color: #a855f7;" />
+              Regenerate Alternative Corridors
+            </button>
+          </div>
         </div>
       {/if}
 
@@ -1064,15 +1296,41 @@
       {#if activeTab === 'timetable'}
         {#if analysisResult && analysisResult.timetables.length > 0}
           <div class="card">
-            <div class="card-title">
-              <span>Select Route Timetable</span>
+            <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+              <span>Route Timetable & Stops</span>
+              <button
+                class="btn btn-secondary"
+                style="padding: 4px 10px; font-size: 12px; {isEditingRoute ? 'background: #0284c7; border-color: #38bdf8; color: #fff;' : ''}"
+                onclick={toggleRouteEditor}
+              >
+                {#if isEditingRoute}
+                  <Check class="w-3.5 h-3.5" /> Done Editing
+                {:else}
+                  <Edit3 class="w-3.5 h-3.5" /> Edit Route
+                {/if}
+              </button>
             </div>
+
+            {#if isEditingRoute}
+              <div style="background: rgba(2, 132, 199, 0.15); border: 1px solid #0284c7; border-radius: 8px; padding: 10px; margin-bottom: 12px; font-size: 12px; color: #bae6fd;">
+                <div style="font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                  <Edit3 class="w-4 h-4" /> Interactive Route Editor Active
+                </div>
+                <div>• Drag stop markers on the map to adjust pickup coordinates.</div>
+                <div>• Edit stop names, departure times, or student counts below.</div>
+                <div>• Remove or add stops as required.</div>
+              </div>
+            {/if}
+
             <div style="display: flex; gap: 6px; margin-bottom: 12px;">
               {#each analysisResult.timetables as tt}
                 <button
                   class="btn btn-secondary"
                   style="flex: 1; border-color: {activeTimetableRoute === tt.route_rank ? ROUTE_COLORS[tt.route_rank - 1] : '#334155'}; background: {activeTimetableRoute === tt.route_rank ? 'rgba(139, 92, 246, 0.2)' : ''}"
-                  onclick={() => (activeTimetableRoute = tt.route_rank)}
+                  onclick={() => {
+                    activeTimetableRoute = tt.route_rank;
+                    if (isEditingRoute) updateEditMarkers();
+                  }}
                 >
                   Route {tt.route_rank}
                 </button>
@@ -1095,20 +1353,75 @@
                         <th>Location</th>
                         <th>Dep</th>
                         <th>Pupils</th>
+                        {#if isEditingRoute}
+                          <th>Action</th>
+                        {/if}
                       </tr>
                     </thead>
                     <tbody>
-                      {#each tt.stops as s}
+                      {#each tt.stops as s, sIdx}
                         <tr>
                           <td><span class="stop-badge" style="background: {ROUTE_COLORS[tt.route_rank - 1]}">{s.stop_label}</span></td>
-                          <td>{s.stop_name}</td>
-                          <td style="font-weight: 600; color: #38bdf8;">{s.departure_time}</td>
-                          <td>+{s.boarding_students} ({s.cumulative_students})</td>
+                          <td>
+                            {#if isEditingRoute}
+                              <input
+                                type="text"
+                                style="width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 4px; padding: 2px 6px; font-size: 11px; color: #f8fafc;"
+                                bind:value={s.stop_name}
+                              />
+                            {:else}
+                              {s.stop_name}
+                            {/if}
+                          </td>
+                          <td style="font-weight: 600; color: #38bdf8;">
+                            {s.departure_time}
+                          </td>
+                          <td>
+                            {#if isEditingRoute}
+                              <input
+                                type="number"
+                                min="0"
+                                max="50"
+                                style="width: 48px; background: #0f172a; border: 1px solid #334155; border-radius: 4px; padding: 2px 4px; font-size: 11px; color: #f8fafc;"
+                                bind:value={s.boarding_students}
+                                onchange={() => recalculateTimetable(tt)}
+                              />
+                            {:else}
+                              +{s.boarding_students} ({s.cumulative_students})
+                            {/if}
+                          </td>
+                          {#if isEditingRoute}
+                            <td>
+                              {#if sIdx < tt.stops.length - 1 && tt.stops.length > 2}
+                                <button
+                                  class="btn btn-secondary"
+                                  style="padding: 2px 6px; font-size: 11px; color: #f87171; border-color: rgba(248, 113, 113, 0.4);"
+                                  onclick={() => removeStopFromActiveRoute(sIdx)}
+                                  title="Remove this stop"
+                                >
+                                  <Trash2 class="w-3 h-3" />
+                                </button>
+                              {/if}
+                            </td>
+                          {/if}
                         </tr>
                       {/each}
                     </tbody>
                   </table>
                 </div>
+
+                {#if isEditingRoute}
+                  <div style="margin-top: 10px; display: flex; gap: 8px;">
+                    <button class="btn btn-secondary" style="flex: 1; font-size: 12px;" onclick={addPickupStopToActiveRoute}>
+                      <Plus class="w-3.5 h-3.5" style="color: #38bdf8;" />
+                      Add Stop at Map Center
+                    </button>
+                    <button class="btn btn-primary" style="flex: 1; font-size: 12px;" onclick={toggleRouteEditor}>
+                      <Check class="w-3.5 h-3.5" />
+                      Save Edits
+                    </button>
+                  </div>
+                {/if}
 
                 <div style="margin-top: 14px;">
                   <button class="btn btn-secondary btn-block" onclick={() => exportTimetableCsv(tt)}>
