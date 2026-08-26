@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/bicischools-core",
+    "crates/bicischools-cli",
+    "bindings/wasm"
+]
+default-members = ["crates/bicischools-core", "crates/bicischools-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "MIT"
+repository = "https://github.com/Robinlovelace/bicischools-web"
+authors = ["Robin Lovelace", "Joey Talbot", "Juan Fonseca-Zamora", "Rosa Félix"]
+
+[workspace.dependencies]
+geo = { version = "0.28", features = ["use-serde"] }
+geo-types = { version = "0.7", features = ["serde"] }
+geojson = { version = "0.24", features = ["geo-types"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rstar = "0.12"
+thiserror = "1.0"
+anyhow = "1.0"
+log = "0.4"
+getrandom = { version = "0.2", features = ["js"] }

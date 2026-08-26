@@ -1,0 +1,23 @@
+[package]
+name = "bicischools-core"
+description = "Core routing, network aggregation, and bike bus planning engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+geo.workspace = true
+geo-types.workspace = true
+geojson.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rstar.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+log.workspace = true
+rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
+
+[dev-dependencies]
+approx = "0.5"

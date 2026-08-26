@@ -1,0 +1,24 @@
+[package]
+name = "bicischools-wasm"
+description = "WebAssembly bindings for bicischools-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+bicischools-core = { path = "../../crates/bicischools-core" }
+geo.workspace = true
+geo-types.workspace = true
+geojson.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+wasm-bindgen = "0.2"
+console_error_panic_hook = "0.1"
+log.workspace = true
+console_log = "1.0"
+getrandom = { workspace = true }
