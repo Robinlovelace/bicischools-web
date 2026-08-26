@@ -18,7 +18,9 @@
     Sparkles,
     Eye,
     Globe,
-    Compass
+    Compass,
+    PanelLeftClose,
+    PanelLeftOpen
   } from '@lucide/svelte';
   import { ensureWasmInitialized, engineInstance, loadPreset } from './lib/engine';
   import { fetchOsmNetworkAroundPoint, searchNearbySchools } from './lib/overpass';
@@ -39,6 +41,7 @@
   let activeTab: 'presets' | 'custom' | 'settings' | 'timetable' = $state('presets');
   let selectedPresetId = $state<string>('lisbon');
   let currentPreset = $state<CaseStudyPreset | null>(null);
+  let sidebarOpen = $state<boolean>(true);
 
   let loading = $state<boolean>(false);
   let statusMessage = $state<string>('Ready');
@@ -592,6 +595,13 @@
     a.click();
     URL.revokeObjectURL(url);
   }
+
+  function toggleSidebar() {
+    sidebarOpen = !sidebarOpen;
+    setTimeout(() => {
+      if (map) map.resize();
+    }, 320);
+  }
 </script>
 
 <header class="app-header">
@@ -670,7 +680,7 @@
 
 <div class="workspace">
   <!-- Left Sidebar -->
-  <aside class="sidebar">
+  <aside class="sidebar" class:collapsed={!sidebarOpen}>
     <div class="sidebar-tabs">
       <button
         class="tab-btn"
@@ -988,7 +998,20 @@
   </aside>
 
   <!-- Main Map Container -->
-  <main class="map-container">
+  <main class="map-container" style="position: relative;">
+    <button
+      class="sidebar-toggle-btn"
+      onclick={toggleSidebar}
+      title={sidebarOpen ? "Collapse Sidebar (Full Map View)" : "Expand Sidebar (Controls & Timetable)"}
+      aria-label="Toggle Sidebar"
+    >
+      {#if sidebarOpen}
+        <PanelLeftClose class="w-4 h-4" />
+      {:else}
+        <PanelLeftOpen class="w-4 h-4" />
+      {/if}
+    </button>
+
     <div id="map" bind:this={mapContainer}></div>
 
     <!-- Map Legend -->
