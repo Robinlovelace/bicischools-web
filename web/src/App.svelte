@@ -66,6 +66,7 @@
   let dwellTimeMins = $state<number>(1.0);
   let catchmentRadiusM = $state<number>(2500);
   let circuity = $state<number>(1.25);
+  let maxStraightLineDistM = $state<number>(2500);
 
   // Analysis Outputs
   let analysisResult = $state<BiciAnalysisOutput | null>(null);
@@ -489,7 +490,8 @@
         group_speed_kmh: groupSpeedKmh,
         dwell_time_mins: dwellTimeMins,
         max_route_distance_m: catchmentRadiusM * 1.5,
-        circuity: circuity
+        circuity: circuity,
+        max_straight_line_dist_m: maxStraightLineDistM
       };
 
       const result = engineInstance.runAnalysis(config);
@@ -850,6 +852,17 @@
             <input id="circuity" type="range" min="1.0" max="2.2" step="0.05" bind:value={circuity} onchange={fetchAndAnalyzeArea} />
             <div style="font-size: 11px; color: #94a3b8; margin-top: 3px; line-height: 1.35;">
               Higher circuity attracts routes to detour and weave through dense residential streets to pick up more students instead of heading straight to school.
+            </div>
+          </div>
+
+          <div class="control-group">
+            <label class="control-label" for="max-straight-dist">
+              <span>Max Straight-Line Distance from School</span>
+              <span class="control-value">{(maxStraightLineDistM / 1000).toFixed(2)} km</span>
+            </label>
+            <input id="max-straight-dist" type="range" min="1000" max="5000" step="250" bind:value={maxStraightLineDistM} onchange={fetchAndAnalyzeArea} />
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 3px; line-height: 1.35;">
+              Euclidean radius buffer around school filtering candidate origins and route start points.
             </div>
           </div>
         </div>

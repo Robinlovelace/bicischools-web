@@ -57,6 +57,8 @@ pub struct BiciConfig {
     pub max_route_distance_m: f64,
     #[serde(default = "default_circuity")]
     pub circuity: f64, // 1.0 = direct/shortest, 1.25 = moderate meandering, 2.0 = high circuity
+    #[serde(default = "default_max_straight_line_dist")]
+    pub max_straight_line_dist_m: f64, // Straight-line Euclidean radius from school
 }
 
 fn default_min_trips() -> f64 { 3.0 }
@@ -68,6 +70,7 @@ fn default_group_speed() -> f64 { 11.0 }
 fn default_dwell_time() -> f64 { 1.0 }
 fn default_max_route_distance() -> f64 { 5000.0 }
 fn default_circuity() -> f64 { 1.25 }
+fn default_max_straight_line_dist() -> f64 { 2500.0 }
 
 impl Default for BiciConfig {
     fn default() -> Self {
@@ -86,6 +89,7 @@ impl Default for BiciConfig {
             dwell_time_mins: default_dwell_time(),
             max_route_distance_m: default_max_route_distance(),
             circuity: default_circuity(),
+            max_straight_line_dist_m: default_max_straight_line_dist(),
         }
     }
 }
@@ -121,11 +125,16 @@ impl BiciEngine {
             .find_nearest_node(config.school_lng, config.school_lat)
             .ok_or_else(|| anyhow::anyhow!("No road network nodes found near school location"))?;
 
-        // 2. Prepare origins: use user-provided origins or generate synthetic ones
+        // 2. Prepare origins: use user-provided origins or generate synthetic ones,
+        // filtered by straight-line Euclidean distance from school
         let origins_to_route: Vec<(String, usize, f64)> = if !config.origins.is_empty() {
             config
                 .origins
                 .iter()
+                .filter(|o| {
+                    haversine_distance(o.lng, o.lat, config.school_lng, config.school_lat)
+                        <= config.max_straight_line_dist_m
+                })
                 .filter_map(|o| {
                     self.graph
                         .find_nearest_node(o.lng, o.lat)
@@ -138,7 +147,7 @@ impl BiciEngine {
                 config.school_lng,
                 config.school_lat,
                 120,
-                config.max_route_distance_m.min(3500.0),
+                config.max_straight_line_dist_m,
                 42,
             )
         };

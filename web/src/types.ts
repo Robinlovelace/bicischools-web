@@ -24,6 +24,7 @@ export interface BiciConfig {
   dwell_time_mins: number;
   max_route_distance_m: number;
   circuity: number;
+  max_straight_line_dist_m: number;
 }
 
 export interface CandidateRoute {
