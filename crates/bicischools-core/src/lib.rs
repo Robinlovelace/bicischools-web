@@ -72,7 +72,7 @@ fn default_group_speed() -> f64 { 11.0 }
 fn default_dwell_time() -> f64 { 1.0 }
 fn default_max_route_distance() -> f64 { 5000.0 }
 fn default_circuity() -> f64 { 1.25 }
-fn default_max_straight_line_dist() -> f64 { 2500.0 }
+fn default_max_straight_line_dist() -> f64 { 1000.0 }
 fn default_max_shared_overlap() -> f64 { 40.0 }
 
 impl Default for BiciConfig {

@@ -62,16 +62,42 @@
   let schoolName = $state<string>('Escola Básica Adriano Correia de Oliveira');
   let routingProfile = $state<RoutingProfile>('quiet');
   let minTripsThreshold = $state<number>(3.0);
+  const DISTANCE_STEPS_M = [200, 300, 400, 500, 700, 1000, 2000, 3000, 4000, 5000];
+
+  function formatDistance(m: number): string {
+    if (m < 1000) {
+      return `${m}m`;
+    } else {
+      const km = m / 1000;
+      return `${km % 1 === 0 ? km.toFixed(0) : km.toFixed(1)} km`;
+    }
+  }
+
+  function findClosestStepIndex(m: number): number {
+    let closestIdx = 0;
+    let minDiff = Infinity;
+    for (let i = 0; i < DISTANCE_STEPS_M.length; i++) {
+      const diff = Math.abs(DISTANCE_STEPS_M[i] - m);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestIdx = i;
+      }
+    }
+    return closestIdx;
+  }
+
   let originBufferM = $state<number>(300.0);
   let maxRoutes = $state<number>(3);
   let maxDistToBikeBusM = $state<number>(300.0);
   let targetArrivalTime = $state<string>('08:45');
   let groupSpeedKmh = $state<number>(11.0);
   let dwellTimeMins = $state<number>(1.0);
-  let catchmentRadiusM = $state<number>(2500);
+  let catchmentRadiusM = $state<number>(1000);
   let circuity = $state<number>(1.25);
-  let maxStraightLineDistM = $state<number>(2500);
+  let maxStraightLineDistM = $state<number>(1000);
   let maxSharedOverlapPct = $state<number>(40);
+  let straightDistStepIndex = $state<number>(5);
+  let catchmentStepIndex = $state<number>(5);
 
   // Analysis Outputs
   let analysisResult = $state<BiciAnalysisOutput | null>(null);
@@ -870,9 +896,19 @@
           <div class="control-group">
             <label class="control-label" for="catchment-radius">
               <span>Catchment Radius</span>
-              <span class="control-value">{(catchmentRadiusM / 1000).toFixed(1)} km</span>
+              <span class="control-value">{formatDistance(catchmentRadiusM)}</span>
             </label>
-            <input id="catchment-radius" type="range" min="1000" max="4500" step="250" bind:value={catchmentRadiusM} />
+            <input
+              id="catchment-radius"
+              type="range"
+              min="0"
+              max={DISTANCE_STEPS_M.length - 1}
+              step="1"
+              bind:value={catchmentStepIndex}
+              oninput={() => {
+                catchmentRadiusM = DISTANCE_STEPS_M[catchmentStepIndex];
+              }}
+            />
           </div>
 
           <div style="display: flex; gap: 8px; margin-top: 10px;">
@@ -959,9 +995,23 @@
           <div class="control-group">
             <label class="control-label" for="max-straight-dist">
               <span>Max Straight-Line Distance from School</span>
-              <span class="control-value">{(maxStraightLineDistM / 1000).toFixed(2)} km</span>
+              <span class="control-value">{formatDistance(maxStraightLineDistM)}</span>
             </label>
-            <input id="max-straight-dist" type="range" min="1000" max="5000" step="250" bind:value={maxStraightLineDistM} onchange={fetchAndAnalyzeArea} />
+            <input
+              id="max-straight-dist"
+              type="range"
+              min="0"
+              max={DISTANCE_STEPS_M.length - 1}
+              step="1"
+              bind:value={straightDistStepIndex}
+              oninput={() => {
+                maxStraightLineDistM = DISTANCE_STEPS_M[straightDistStepIndex];
+              }}
+              onchange={() => {
+                maxStraightLineDistM = DISTANCE_STEPS_M[straightDistStepIndex];
+                fetchAndAnalyzeArea();
+              }}
+            />
             <div style="font-size: 11px; color: #94a3b8; margin-top: 3px; line-height: 1.35;">
               Euclidean radius buffer around school filtering candidate origins and route start points.
             </div>
