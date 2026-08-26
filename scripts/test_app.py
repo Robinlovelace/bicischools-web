@@ -21,7 +21,6 @@ async def run_tests():
         print(f"Navigating to {url}...")
         await page.goto(url, wait_until="networkidle", timeout=15000)
 
-        # Wait for MapLibre canvas and initial preset
         await page.wait_for_selector("#map canvas", timeout=10000)
         await asyncio.sleep(2)
 
@@ -29,7 +28,6 @@ async def run_tests():
         print("Taking screenshot of Lisbon case study...")
         lisbon_screenshot = os.path.join(ARTIFACT_DIR, "screenshot_lisbon.png")
         await page.screenshot(path=lisbon_screenshot)
-        print(f"Saved: {lisbon_screenshot}")
 
         # 2. Click Almada preset
         print("Testing Almada preset...")
@@ -38,7 +36,6 @@ async def run_tests():
         await asyncio.sleep(2)
         almada_screenshot = os.path.join(ARTIFACT_DIR, "screenshot_almada.png")
         await page.screenshot(path=almada_screenshot)
-        print(f"Saved: {almada_screenshot}")
 
         # 3. Test Search for Bracken Edge, Leeds
         print("Testing search for 'Bracken Edge, Leeds'...")
@@ -47,25 +44,34 @@ async def run_tests():
         await page.keyboard.press("Enter")
         await asyncio.sleep(2)
 
-        # Click the dropdown result
         first_result = page.locator("button:has-text('Bracken Edge')").first
         if await first_result.count() > 0:
             print("Found Bracken Edge in search results, clicking...")
             await first_result.click()
         else:
-            print("Directly triggering Live Analysis for Bracken Edge...")
             await page.locator("button:has-text('Run Live Analysis')").click()
 
-        # Wait for Overpass download + WASM analysis
         print("Waiting for OSM download and WASM analysis...")
         await asyncio.sleep(6)
 
-        # Take screenshot of Bracken Edge map
-        bracken_screenshot = os.path.join(ARTIFACT_DIR, "screenshot_bracken_edge_map.png")
+        # 4. Adjust Circuity Parameter to 1.5x in Parameters Tab
+        print("Testing Circuity parameter adjustment to 1.5x...")
+        params_tab = page.locator("button:has-text('Parameters')")
+        await params_tab.click()
+        await asyncio.sleep(1)
+
+        circuity_slider = page.locator("#circuity")
+        await circuity_slider.fill("1.5")
+        # Trigger change
+        await circuity_slider.dispatch_event("change")
+        await asyncio.sleep(4)
+
+        # Take screenshot of circuitous Bracken Edge map
+        bracken_screenshot = os.path.join(ARTIFACT_DIR, "screenshot_bracken_edge_circuity.png")
         await page.screenshot(path=bracken_screenshot)
         print(f"Saved: {bracken_screenshot}")
 
-        # 4. Switch to Timetable tab
+        # 5. Switch to Timetable tab
         print("Switching to Timetable tab...")
         timetable_tab = page.locator("button:has-text('Timetable')")
         await timetable_tab.click()

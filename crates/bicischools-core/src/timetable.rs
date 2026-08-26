@@ -144,14 +144,11 @@ pub fn generate_route_timetable(
 
     for (i, &(lng, lat, cum_dist)) in raw_stops.iter().enumerate() {
         let is_last = i == num_stops - 1;
+        let letter = stop_letters.get(i).copied().unwrap_or("S");
         let label = if is_last {
-            "Arrival".to_string()
+            "Arr".to_string()
         } else {
-            stop_letters
-                .get(i)
-                .copied()
-                .unwrap_or("Stop")
-                .to_string()
+            format!("{}{}", route.rank, letter)
         };
 
         let name = if is_last {

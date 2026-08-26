@@ -2,9 +2,9 @@ import type { Map as MapLibreMap } from 'maplibre-gl';
 import type { FeatureCollection } from 'geojson';
 
 export const ROUTE_COLORS = [
-  '#8b5cf6', // Route 1: Purple
+  '#8b5cf6', // Route 1: Purple / Indigo
   '#06b6d4', // Route 2: Cyan
-  '#f59e0b', // Route 3: Amber
+  '#f59e0b', // Route 3: Amber / Orange
   '#ec4899', // Route 4: Pink
   '#10b981', // Route 5: Emerald
 ];
@@ -62,7 +62,7 @@ export function setupMapLayers(map: MapLibreMap): void {
 
   // 2. Add Map Layers
 
-  // Route network (background demand heatmap)
+  // Route network (background demand heatmap with Viridis color ramp and dynamic stroke width)
   if (!map.getLayer('route-network-casing')) {
     map.addLayer({
       id: 'route-network-casing',
@@ -75,11 +75,11 @@ export function setupMapLayers(map: MapLibreMap): void {
           ['linear'],
           ['zoom'],
           12,
-          ['interpolate', ['linear'], ['get', 'bicycle_godutch'], 0, 1.5, 5, 3.5, 15, 6],
+          ['interpolate', ['linear'], ['coalesce', ['get', 'bicycle_godutch'], 0], 0, 2.0, 5, 4.5, 15, 8.0],
           16,
-          ['interpolate', ['linear'], ['get', 'bicycle_godutch'], 0, 3, 5, 6, 15, 10]
+          ['interpolate', ['linear'], ['coalesce', ['get', 'bicycle_godutch'], 0], 0, 3.5, 5, 7.0, 15, 12.0]
         ],
-        'line-opacity': 0.15
+        'line-opacity': 0.25
       }
     });
   }
@@ -89,32 +89,37 @@ export function setupMapLayers(map: MapLibreMap): void {
       id: 'route-network-line',
       type: 'line',
       source: 'route-network',
+      layout: {
+        'line-cap': 'round',
+        'line-join': 'round'
+      },
       paint: {
         'line-color': [
           'interpolate',
           ['linear'],
           ['coalesce', ['get', 'bicycle_godutch'], 0],
-          0, '#94a3b8',
-          1, '#38bdf8',
-          3, '#34d399',
-          6, '#fbbf24',
-          12, '#f43f5e'
+          0, '#64748b',
+          1, '#0284c7',
+          3, '#0d9488',
+          6, '#10b981',
+          10, '#f59e0b',
+          16, '#f43f5e'
         ],
         'line-width': [
           'interpolate',
           ['linear'],
           ['zoom'],
           12,
-          ['interpolate', ['linear'], ['coalesce', ['get', 'bicycle_godutch'], 0], 0, 1.0, 5, 2.5, 15, 4.5],
+          ['interpolate', ['linear'], ['coalesce', ['get', 'bicycle_godutch'], 0], 0, 1.2, 3, 2.8, 10, 5.0],
           16,
-          ['interpolate', ['linear'], ['coalesce', ['get', 'bicycle_godutch'], 0], 0, 2.0, 5, 4.5, 15, 8.0]
+          ['interpolate', ['linear'], ['coalesce', ['get', 'bicycle_godutch'], 0], 0, 2.2, 3, 4.5, 10, 8.5]
         ],
-        'line-opacity': 0.8
+        'line-opacity': 0.85
       }
     });
   }
 
-  // Actual CicloExpresso routes (comparison)
+  // Actual CicloExpresso routes (comparison dashed line)
   if (!map.getLayer('actual-routes-line')) {
     map.addLayer({
       id: 'actual-routes-line',
@@ -122,14 +127,14 @@ export function setupMapLayers(map: MapLibreMap): void {
       source: 'actual-routes',
       paint: {
         'line-color': '#e11d48',
-        'line-width': 4,
-        'line-dasharray': [2, 2],
-        'line-opacity': 0.9
+        'line-width': 4.5,
+        'line-dasharray': [3, 2],
+        'line-opacity': 0.95
       }
     });
   }
 
-  // Candidate Bike Bus Corridors (Glow & Main line)
+  // Candidate Bike Bus Corridors: Casing + Glow + Main Line
   if (!map.getLayer('candidate-routes-glow')) {
     map.addLayer({
       id: 'candidate-routes-glow',
@@ -144,11 +149,40 @@ export function setupMapLayers(map: MapLibreMap): void {
           3, ROUTE_COLORS[2],
           4, ROUTE_COLORS[3],
           5, ROUTE_COLORS[4],
-          '#6366f1'
+          '#8b5cf6'
         ],
-        'line-width': 12,
+        'line-width': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          12, 12,
+          16, 18
+        ],
         'line-opacity': 0.35,
-        'line-blur': 3
+        'line-blur': 4
+      }
+    });
+  }
+
+  if (!map.getLayer('candidate-routes-casing')) {
+    map.addLayer({
+      id: 'candidate-routes-casing',
+      type: 'line',
+      source: 'candidate-routes',
+      layout: {
+        'line-cap': 'round',
+        'line-join': 'round'
+      },
+      paint: {
+        'line-color': '#0f172a',
+        'line-width': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          12, 6.5,
+          16, 10.5
+        ],
+        'line-opacity': 0.95
       }
     });
   }
@@ -171,16 +205,16 @@ export function setupMapLayers(map: MapLibreMap): void {
           3, ROUTE_COLORS[2],
           4, ROUTE_COLORS[3],
           5, ROUTE_COLORS[4],
-          '#6366f1'
+          '#8b5cf6'
         ],
         'line-width': [
           'interpolate',
           ['linear'],
           ['zoom'],
-          12, 4,
-          16, 7
+          12, 4.0,
+          16, 7.0
         ],
-        'line-opacity': 0.95
+        'line-opacity': 1.0
       }
     });
   }
@@ -196,8 +230,8 @@ export function setupMapLayers(map: MapLibreMap): void {
           'interpolate',
           ['linear'],
           ['zoom'],
-          12, ['interpolate', ['linear'], ['coalesce', ['get', 'num_students'], 1], 1, 3, 5, 6, 20, 10],
-          16, ['interpolate', ['linear'], ['coalesce', ['get', 'num_students'], 1], 1, 5, 5, 10, 20, 18]
+          12, ['interpolate', ['linear'], ['coalesce', ['get', 'num_students'], 1], 1, 3.5, 5, 6, 20, 10],
+          16, ['interpolate', ['linear'], ['coalesce', ['get', 'num_students'], 1], 1, 5.5, 5, 10, 20, 18]
         ],
         'circle-color': [
           'case',
@@ -221,17 +255,17 @@ export function setupMapLayers(map: MapLibreMap): void {
     });
   }
 
-  // Timetable Stops
+  // Timetable Stops: Outer border + Route-colored inner circle + Label
   if (!map.getLayer('timetable-stops-outer')) {
     map.addLayer({
       id: 'timetable-stops-outer',
       type: 'circle',
       source: 'timetable-stops',
       paint: {
-        'circle-radius': 11,
+        'circle-radius': 12,
         'circle-color': '#ffffff',
         'circle-stroke-width': 2.5,
-        'circle-stroke-color': '#1e293b'
+        'circle-stroke-color': '#0f172a'
       }
     });
   }
@@ -242,8 +276,17 @@ export function setupMapLayers(map: MapLibreMap): void {
       type: 'circle',
       source: 'timetable-stops',
       paint: {
-        'circle-radius': 8,
-        'circle-color': '#3b82f6'
+        'circle-radius': 9,
+        'circle-color': [
+          'match',
+          ['get', 'route_rank'],
+          1, ROUTE_COLORS[0],
+          2, ROUTE_COLORS[1],
+          3, ROUTE_COLORS[2],
+          4, ROUTE_COLORS[3],
+          5, ROUTE_COLORS[4],
+          '#3b82f6'
+        ]
       }
     });
   }
@@ -255,7 +298,7 @@ export function setupMapLayers(map: MapLibreMap): void {
       source: 'timetable-stops',
       layout: {
         'text-field': ['get', 'stop_label'],
-        'text-size': 10,
+        'text-size': 9,
         'text-allow-overlap': true
       },
       paint: {
@@ -273,8 +316,8 @@ export function setupMapLayers(map: MapLibreMap): void {
       paint: {
         'circle-radius': 14,
         'circle-color': '#fbbf24',
-        'circle-stroke-width': 3,
-        'circle-stroke-color': '#1e293b'
+        'circle-stroke-width': 3.5,
+        'circle-stroke-color': '#0f172a'
       }
     });
   }

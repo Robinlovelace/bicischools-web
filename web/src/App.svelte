@@ -109,6 +109,112 @@
     map.on('load', async () => {
       if (map) {
         setupMapLayers(map);
+
+        const popup = new maplibregl.Popup({
+          closeButton: false,
+          closeOnClick: false,
+          offset: 12
+        });
+
+        // 1. Candidate Route hover tooltip
+        map.on('mouseenter', 'candidate-routes-line', (e) => {
+          if (!map || !e.features || !e.features[0]) return;
+          map.getCanvas().style.cursor = 'pointer';
+          const f = e.features[0];
+          const p = f.properties || {};
+          const rank = p.rank || 1;
+          const color = ROUTE_COLORS[rank - 1] || '#8b5cf6';
+          const lenKm = ((p.total_length_m || p.length || 2000) / 1000).toFixed(2);
+          const score = Math.round(p.score || 0);
+          const demand = (p.mean_godutch_demand || 0).toFixed(1);
+          const quiet = Math.round(p.quietness_score || 80);
+
+          popup
+            .setLngLat(e.lngLat)
+            .setHTML(`
+              <div style="font-family: system-ui, sans-serif; padding: 6px 8px; min-width: 170px;">
+                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                  <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: ${color};"></span>
+                  <strong style="color: #0f172a; font-size: 13px;">Bike Bus Corridor ${rank}</strong>
+                </div>
+                <div style="font-size: 11px; color: #475569; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px;">
+                  <span>Distance: <strong>${lenKm} km</strong></span>
+                  <span>Quietness: <strong>${quiet}%</strong></span>
+                  <span>Demand: <strong>${demand} pupils</strong></span>
+                  <span>Score: <strong>${score}</strong></span>
+                </div>
+              </div>
+            `)
+            .addTo(map);
+        });
+
+        map.on('mouseleave', 'candidate-routes-line', () => {
+          if (!map) return;
+          map.getCanvas().style.cursor = '';
+          popup.remove();
+        });
+
+        // 2. Timetable Stops hover tooltip
+        map.on('mouseenter', 'timetable-stops-inner', (e) => {
+          if (!map || !e.features || !e.features[0]) return;
+          map.getCanvas().style.cursor = 'pointer';
+          const f = e.features[0];
+          const p = f.properties || {};
+          const rank = p.route_rank || 1;
+          const color = ROUTE_COLORS[rank - 1] || '#8b5cf6';
+          const label = p.stop_label || 'A';
+          const name = p.stop_name || `Stop ${label}`;
+          const dep = p.departure_time || '08:30';
+          const pupils = p.boarding_students !== undefined ? p.boarding_students : 5;
+
+          popup
+            .setLngLat(e.lngLat)
+            .setHTML(`
+              <div style="font-family: system-ui, sans-serif; padding: 6px 8px; min-width: 160px;">
+                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                  <span style="background: ${color}; color: #fff; font-size: 10px; font-weight: bold; border-radius: 4px; padding: 1px 5px;">${label}</span>
+                  <strong style="color: #0f172a; font-size: 12px;">${name}</strong>
+                </div>
+                <div style="font-size: 11px; color: #475569;">
+                  <div>Departure: <strong style="color: #0284c7;">${dep}</strong></div>
+                  <div>Boarding: <strong>+${pupils} pupils</strong></div>
+                </div>
+              </div>
+            `)
+            .addTo(map);
+        });
+
+        map.on('mouseleave', 'timetable-stops-inner', () => {
+          if (!map) return;
+          map.getCanvas().style.cursor = '';
+          popup.remove();
+        });
+
+        // 3. School Marker hover tooltip
+        map.on('mouseenter', 'school-marker-circle', (e) => {
+          if (!map || !e.features || !e.features[0]) return;
+          map.getCanvas().style.cursor = 'pointer';
+          const name = schoolName || 'Target Destination School';
+
+          popup
+            .setLngLat(e.lngLat)
+            .setHTML(`
+              <div style="font-family: system-ui, sans-serif; padding: 6px 8px;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 14px;">🏫</span>
+                  <strong style="color: #0f172a; font-size: 12px;">${name}</strong>
+                </div>
+                <div style="font-size: 11px; color: #64748b; margin-top: 2px;">School Destination</div>
+              </div>
+            `)
+            .addTo(map);
+        });
+
+        map.on('mouseleave', 'school-marker-circle', () => {
+          if (!map) return;
+          map.getCanvas().style.cursor = '';
+          popup.remove();
+        });
       }
       try {
         await ensureWasmInitialized();
@@ -210,11 +316,12 @@
         if (preset.candidate_routes && preset.candidate_routes.features) {
           const mockTimetables: RouteTimetable[] = preset.candidate_routes.features.map((feat: any, idx: number) => {
             const coords = feat.geometry.coordinates || [];
+            const rank = idx + 1;
             const stops = [
               {
-                stop_id: `R${idx + 1}_A`,
-                stop_name: `Stop A (Origin Start)`,
-                stop_label: 'A',
+                stop_id: `R${rank}_A`,
+                stop_name: `Stop ${rank}A (Origin Start)`,
+                stop_label: `${rank}A`,
                 lng: coords[0]?.[0] || schoolLng,
                 lat: coords[0]?.[1] || schoolLat,
                 cumulative_dist_m: 0,
@@ -225,9 +332,9 @@
                 cumulative_students: 8
               },
               {
-                stop_id: `R${idx + 1}_B`,
-                stop_name: `Stop B (Midpoint)`,
-                stop_label: 'B',
+                stop_id: `R${rank}_B`,
+                stop_name: `Stop ${rank}B (Midpoint)`,
+                stop_label: `${rank}B`,
                 lng: coords[Math.floor(coords.length / 2)]?.[0] || schoolLng,
                 lat: coords[Math.floor(coords.length / 2)]?.[1] || schoolLat,
                 cumulative_dist_m: Math.round(feat.properties?.total_length_m || 2000) / 2,
@@ -238,9 +345,9 @@
                 cumulative_students: 20
               },
               {
-                stop_id: `R${idx + 1}_End`,
+                stop_id: `R${rank}_End`,
                 stop_name: `School Arrival: ${schoolName}`,
-                stop_label: 'Arrival',
+                stop_label: 'Arr',
                 lng: schoolLng,
                 lat: schoolLat,
                 cumulative_dist_m: Math.round(feat.properties?.total_length_m || 2000),
