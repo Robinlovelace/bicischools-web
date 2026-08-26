@@ -20,7 +20,8 @@
     Globe,
     Compass,
     PanelLeftClose,
-    PanelLeftOpen
+    PanelLeftOpen,
+    X
   } from '@lucide/svelte';
   import { ensureWasmInitialized, engineInstance, loadPreset } from './lib/engine';
   import { fetchOsmNetworkAroundPoint, searchNearbySchools } from './lib/overpass';
@@ -602,52 +603,94 @@
       if (map) map.resize();
     }, 320);
   }
+
+  function handleWindowClick(e: MouseEvent) {
+    const target = e.target as HTMLElement;
+    if (!target.closest('.header-search-container')) {
+      showSearchDropdown = false;
+    }
+  }
 </script>
 
+<svelte:window onclick={handleWindowClick} />
+
 <header class="app-header">
-  <div class="brand">
-    <div class="logo-badge">🚲</div>
+  <button class="brand" type="button" onclick={() => loadSelectedPreset('lisbon')} style="background: none; border: none; padding: 0; text-align: left;">
+    <div class="brand-icon">
+      <Bike class="w-5 h-5" />
+    </div>
     <div class="brand-text">
-      <h1>bicischools</h1>
-      <span>Bike Bus Planning & Prioritisation</span>
+      <h1>bici<span class="brand-accent">schools</span></h1>
+      <span>Bike Bus Planning Platform</span>
     </div>
-  </div>
-
-  <!-- Search Bar in Header -->
-  <div style="position: relative; max-width: 380px; flex: 1; margin: 0 16px;">
-    <div style="display: flex; gap: 4px;">
-      <input
-        type="text"
-        placeholder="Search school, city, or address (e.g. Bracken Edge, Leeds)..."
-        bind:value={searchQuery}
-        onkeydown={(e) => {
-          if (e.key === 'Enter') handleGeocodeSearch();
-        }}
-        style="padding-left: 32px; background: #131d2e; font-size: 12px; height: 34px;"
-      />
-      <Search class="w-4 h-4 text-slate-400" style="position: absolute; left: 10px; top: 9px; pointer-events: none;" />
-      <button class="btn btn-secondary" style="height: 34px; padding: 0 12px; font-size: 12px;" onclick={handleGeocodeSearch} disabled={isSearching}>
-        Search
-      </button>
-    </div>
-
-    <!-- Dropdown of Geocoding Results -->
-    {#if showSearchDropdown && searchResults.length > 0}
-      <div style="position: absolute; top: 40px; left: 0; right: 0; background: #1e293b; border: 1px solid #334155; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 100; max-height: 250px; overflow-y: auto;">
-        {#each searchResults as place}
-          <button
-            style="width: 100%; text-align: left; padding: 8px 12px; background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.05); color: #fff; cursor: pointer; display: flex; flex-direction: column;"
-            onclick={() => selectGeocodedPlace(place)}
-          >
-            <span style="font-weight: 600; font-size: 12px; color: #38bdf8;">{place.name}</span>
-            <span style="font-size: 11px; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{place.display_name}</span>
-          </button>
-        {/each}
-      </div>
-    {/if}
-  </div>
+  </button>
 
   <div class="header-actions">
+    <!-- Search Bar in Header (Right Aligned, Non-clashing) -->
+    <div class="header-search-container">
+      <div style="position: relative; display: flex; align-items: center;">
+        <input
+          type="text"
+          placeholder="Search school or city (e.g. Bracken Edge, Leeds)..."
+          bind:value={searchQuery}
+          onfocus={() => { if (searchResults.length > 0) showSearchDropdown = true; }}
+          onkeydown={(e) => {
+            if (e.key === 'Enter') handleGeocodeSearch();
+            if (e.key === 'Escape') showSearchDropdown = false;
+          }}
+          style="padding-left: 32px; padding-right: 64px; background: #131d2e; font-size: 12px; height: 34px; width: 100%; border-radius: 6px; border: 1px solid #334155; color: #f8fafc;"
+        />
+        <Search class="w-4 h-4 text-slate-400" style="position: absolute; left: 10px; pointer-events: none;" />
+        
+        {#if searchQuery}
+          <button
+            style="position: absolute; right: 54px; background: transparent; border: none; color: #94a3b8; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px;"
+            onclick={() => { searchQuery = ''; showSearchDropdown = false; searchResults = []; }}
+            title="Clear search"
+          >
+            <X class="w-3.5 h-3.5" />
+          </button>
+        {/if}
+
+        <button
+          class="btn btn-secondary"
+          style="position: absolute; right: 2px; height: 30px; padding: 0 10px; font-size: 11px; border-radius: 4px;"
+          onclick={handleGeocodeSearch}
+          disabled={isSearching}
+        >
+          {#if isSearching}
+            <RefreshCw class="w-3 h-3 animate-spin" />
+          {:else}
+            Search
+          {/if}
+        </button>
+      </div>
+
+      <!-- Dropdown of Geocoding Results (Right Aligned over Map) -->
+      {#if showSearchDropdown && searchResults.length > 0}
+        <div class="search-dropdown">
+          <div style="padding: 6px 12px; font-size: 11px; font-weight: 600; color: #94a3b8; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center;">
+            <span>Search Locations</span>
+            <button
+              style="background: transparent; border: none; color: #94a3b8; cursor: pointer; font-size: 11px;"
+              onclick={() => (showSearchDropdown = false)}
+            >
+              Close ✕
+            </button>
+          </div>
+          {#each searchResults as place}
+            <button
+              class="search-result-item"
+              onclick={() => selectGeocodedPlace(place)}
+            >
+              <span style="font-weight: 600; font-size: 12px; color: #38bdf8;">{place.name}</span>
+              <span style="font-size: 11px; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{place.display_name}</span>
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </div>
+
     <button
       class="btn btn-secondary"
       onclick={() => {
