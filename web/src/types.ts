@@ -25,6 +25,7 @@ export interface BiciConfig {
   max_route_distance_m: number;
   circuity: number;
   max_straight_line_dist_m: number;
+  max_shared_overlap_pct: number;
 }
 
 export interface CandidateRoute {

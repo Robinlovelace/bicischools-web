@@ -71,6 +71,7 @@
   let catchmentRadiusM = $state<number>(2500);
   let circuity = $state<number>(1.25);
   let maxStraightLineDistM = $state<number>(2500);
+  let maxSharedOverlapPct = $state<number>(40);
 
   // Analysis Outputs
   let analysisResult = $state<BiciAnalysisOutput | null>(null);
@@ -499,7 +500,8 @@
         dwell_time_mins: dwellTimeMins,
         max_route_distance_m: catchmentRadiusM * 1.5,
         circuity: circuity,
-        max_straight_line_dist_m: maxStraightLineDistM
+        max_straight_line_dist_m: maxStraightLineDistM,
+        max_shared_overlap_pct: maxSharedOverlapPct
       };
 
       const result = engineInstance.runAnalysis(config);
@@ -962,6 +964,17 @@
             <input id="max-straight-dist" type="range" min="1000" max="5000" step="250" bind:value={maxStraightLineDistM} onchange={fetchAndAnalyzeArea} />
             <div style="font-size: 11px; color: #94a3b8; margin-top: 3px; line-height: 1.35;">
               Euclidean radius buffer around school filtering candidate origins and route start points.
+            </div>
+          </div>
+
+          <div class="control-group">
+            <label class="control-label" for="max-overlap">
+              <span>Max Shared Route Overlap</span>
+              <span class="control-value">{maxSharedOverlapPct}%</span>
+            </label>
+            <input id="max-overlap" type="range" min="10" max="80" step="5" bind:value={maxSharedOverlapPct} onchange={fetchAndAnalyzeArea} />
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 3px; line-height: 1.35;">
+              Restricts corridor duplication so candidate routes fan out across distinct neighborhoods (North, East, West).
             </div>
           </div>
         </div>

@@ -59,6 +59,8 @@ pub struct BiciConfig {
     pub circuity: f64, // 1.0 = direct/shortest, 1.25 = moderate meandering, 2.0 = high circuity
     #[serde(default = "default_max_straight_line_dist")]
     pub max_straight_line_dist_m: f64, // Straight-line Euclidean radius from school
+    #[serde(default = "default_max_shared_overlap")]
+    pub max_shared_overlap_pct: f64, // Maximum allowed shared edge overlap % (e.g. 40.0)
 }
 
 fn default_min_trips() -> f64 { 3.0 }
@@ -71,6 +73,7 @@ fn default_dwell_time() -> f64 { 1.0 }
 fn default_max_route_distance() -> f64 { 5000.0 }
 fn default_circuity() -> f64 { 1.25 }
 fn default_max_straight_line_dist() -> f64 { 2500.0 }
+fn default_max_shared_overlap() -> f64 { 40.0 }
 
 impl Default for BiciConfig {
     fn default() -> Self {
@@ -90,6 +93,7 @@ impl Default for BiciConfig {
             max_route_distance_m: default_max_route_distance(),
             circuity: default_circuity(),
             max_straight_line_dist_m: default_max_straight_line_dist(),
+            max_shared_overlap_pct: default_max_shared_overlap(),
         }
     }
 }
@@ -182,6 +186,7 @@ impl BiciEngine {
             config.origin_buffer_m,
             config.max_routes,
             config.max_dist_to_bikebus_m,
+            config.max_shared_overlap_pct,
         );
 
         // 6. Generate timetables for each candidate route

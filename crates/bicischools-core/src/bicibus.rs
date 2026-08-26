@@ -3,7 +3,7 @@ use crate::overline::NetworkSegment;
 use crate::router::RouteResult;
 use geo::{Coord, LineString};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Candidate Bike Bus corridor route
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,6 +91,7 @@ pub fn generate_candidate_bike_buses(
     origin_buffer_m: f64,
     max_routes: usize,
     max_dist_to_bikebus_m: f64,
+    max_shared_overlap_pct: f64,
 ) -> (Vec<CandidateRoute>, Vec<MatchedOrigin>, PlanningSummary) {
     if routes.is_empty() {
         return (
@@ -111,85 +112,133 @@ pub fn generate_candidate_bike_buses(
         );
     }
 
-    // 1. Map corridor edges with demand >= min_trips_threshold
-    let mut corridor_edges: HashMap<usize, f64> = HashMap::new();
+    // 1. Map corridor edges with initial demand >= min_trips_threshold
+    let mut residual_edge_demand: HashMap<usize, f64> = HashMap::new();
     for seg in network {
         if seg.bicycle_godutch >= min_trips_threshold {
-            corridor_edges.insert(seg.edge_id, seg.bicycle_godutch);
+            residual_edge_demand.insert(seg.edge_id, seg.bicycle_godutch);
         }
     }
 
-    // 2. Score candidate routes
-    struct ScoredRoute<'a> {
+    // 2. Iteratively select candidate routes with marginal demand scoring and overlap constraints
+    struct ChosenRoute<'a> {
         route: &'a RouteResult,
+        edge_set: HashSet<usize>,
         corridor_len_m: f64,
         mean_demand: f64,
         score: f64,
     }
 
-    let mut scored_routes = Vec::new();
+    let mut selected: Vec<ChosenRoute> = Vec::new();
+    let max_overlap_ratio = (max_shared_overlap_pct / 100.0).clamp(0.05, 0.95);
 
-    for route in routes {
-        let mut corridor_len_m = 0.0;
-        let mut weighted_demand_sum = 0.0;
+    for _ in 0..max_routes {
+        let mut best_candidate: Option<ChosenRoute> = None;
+        let mut best_score = 0.0;
 
-        for &edge_id in &route.edge_ids {
-            if let Some(&demand) = corridor_edges.get(&edge_id) {
-                if edge_id < graph.edges.len() {
-                    let len = graph.edges[edge_id].length_m;
-                    corridor_len_m += len;
-                    weighted_demand_sum += demand * len;
+        for candidate in routes {
+            let start_coord = match candidate.geometry.coords().next() {
+                Some(c) => c,
+                None => continue,
+            };
+
+            // Check A: Origin buffer separation
+            let mut too_close_to_origin = false;
+            for existing in &selected {
+                if let Some(c2) = existing.route.geometry.coords().next() {
+                    let dist = haversine_distance(start_coord.x, start_coord.y, c2.x, c2.y);
+                    if dist < origin_buffer_m {
+                        too_close_to_origin = true;
+                        break;
+                    }
                 }
             }
-        }
+            if too_close_to_origin {
+                continue;
+            }
 
-        let mean_demand = if corridor_len_m > 0.0 {
-            weighted_demand_sum / corridor_len_m
-        } else {
-            0.0
-        };
-
-        let score = corridor_len_m * mean_demand;
-
-        scored_routes.push(ScoredRoute {
-            route,
-            corridor_len_m,
-            mean_demand,
-            score,
-        });
-    }
-
-    scored_routes.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-
-    // 3. Greedily select top routes with origin buffer separation
-    let mut selected: Vec<&ScoredRoute> = Vec::new();
-
-    for candidate in &scored_routes {
-        if candidate.score <= 0.0 && !selected.is_empty() {
-            continue;
-        }
-
-        let start_coord = match candidate.route.geometry.coords().next() {
-            Some(c) => c,
-            None => continue,
-        };
-
-        let mut too_close = false;
-        for existing in &selected {
-            if let Some(c2) = existing.route.geometry.coords().next() {
-                let dist = haversine_distance(start_coord.x, start_coord.y, c2.x, c2.y);
-                if dist < origin_buffer_m {
-                    too_close = true;
+            // Check B: Maximum shared edge length overlap with already selected routes
+            let mut exceeds_overlap = false;
+            for existing in &selected {
+                let mut shared_edge_len_m = 0.0;
+                for &edge_id in &candidate.edge_ids {
+                    if existing.edge_set.contains(&edge_id) {
+                        if edge_id < graph.edges.len() {
+                            shared_edge_len_m += graph.edges[edge_id].length_m;
+                        }
+                    }
+                }
+                let cand_len = candidate.length_m.max(1.0);
+                let overlap_ratio = shared_edge_len_m / cand_len;
+                if overlap_ratio > max_overlap_ratio {
+                    exceeds_overlap = true;
                     break;
                 }
             }
+            if exceeds_overlap {
+                continue;
+            }
+
+            // Check C: Marginal score calculation using unserved (residual) corridor demand
+            let mut corridor_len_m = 0.0;
+            let mut weighted_demand_sum = 0.0;
+
+            for &edge_id in &candidate.edge_ids {
+                if let Some(&demand) = residual_edge_demand.get(&edge_id) {
+                    if demand > 0.0 && edge_id < graph.edges.len() {
+                        let len = graph.edges[edge_id].length_m;
+                        corridor_len_m += len;
+                        weighted_demand_sum += demand * len;
+                    }
+                }
+            }
+
+            let mean_demand = if corridor_len_m > 0.0 {
+                weighted_demand_sum / corridor_len_m
+            } else {
+                0.0
+            };
+
+            let score = corridor_len_m * mean_demand;
+
+            if score > best_score {
+                best_score = score;
+                let edge_set: HashSet<usize> = candidate.edge_ids.iter().cloned().collect();
+                best_candidate = Some(ChosenRoute {
+                    route: candidate,
+                    edge_set,
+                    corridor_len_m,
+                    mean_demand,
+                    score,
+                });
+            }
         }
 
-        if !too_close {
-            selected.push(candidate);
-            if selected.len() >= max_routes {
-                break;
+        if let Some(winner) = best_candidate {
+            // Subtract / zero-out demand on edges covered by this winning route
+            for &edge_id in &winner.route.edge_ids {
+                if let Some(demand) = residual_edge_demand.get_mut(&edge_id) {
+                    *demand = 0.0;
+                }
             }
+            selected.push(winner);
+        } else {
+            // No more valid candidate routes meeting non-overlap and positive demand constraints
+            break;
+        }
+    }
+
+    // Fallback if no routes selected due to over-constraining
+    if selected.is_empty() && !routes.is_empty() {
+        if let Some(first_route) = routes.first() {
+            let edge_set: HashSet<usize> = first_route.edge_ids.iter().cloned().collect();
+            selected.push(ChosenRoute {
+                route: first_route,
+                edge_set,
+                corridor_len_m: first_route.length_m,
+                mean_demand: 1.0,
+                score: first_route.length_m,
+            });
         }
     }
 
