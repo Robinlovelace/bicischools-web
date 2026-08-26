@@ -242,13 +242,17 @@
     });
   });
 
-  async function handleGeocodeSearch() {
+  async function handleGeocodeSearch(fromHeader: boolean = true) {
     if (!searchQuery.trim()) return;
     isSearching = true;
     statusMessage = `Searching for "${searchQuery}"...`;
     try {
       searchResults = await geocodeLocation(searchQuery);
-      showSearchDropdown = searchResults.length > 0;
+      if (fromHeader) {
+        showSearchDropdown = searchResults.length > 0;
+      } else {
+        showSearchDropdown = false;
+      }
       if (searchResults.length === 0) {
         statusMessage = `No locations found for "${searchQuery}"`;
       } else {
@@ -815,11 +819,11 @@
               placeholder="e.g. Bracken Edge Leeds, Manley Park..."
               bind:value={searchQuery}
               onkeydown={(e) => {
-                if (e.key === 'Enter') handleGeocodeSearch();
+                if (e.key === 'Enter') handleGeocodeSearch(false);
               }}
               style="font-size: 12px; height: 36px; background: #131d2e;"
             />
-            <button class="btn btn-primary" onclick={handleGeocodeSearch} disabled={isSearching} style="padding: 0 14px; flex-shrink: 0;">
+            <button class="btn btn-primary" onclick={() => handleGeocodeSearch(false)} disabled={isSearching} style="padding: 0 14px; flex-shrink: 0;">
               {#if isSearching}
                 <RefreshCw class="w-3.5 h-3.5 animate-spin" />
               {:else}
