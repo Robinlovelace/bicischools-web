@@ -106,6 +106,7 @@
   let catchmentStepIndex = $state<number>(5);
   let randomSeed = $state<number>(42);
   let isEditingRoute = $state<boolean>(false);
+  let minDistToSchoolM = $state<number>(200);
 
   // Analysis Outputs
   let analysisResult = $state<BiciAnalysisOutput | null>(null);
@@ -551,6 +552,7 @@
         circuity: circuity,
         max_straight_line_dist_m: maxStraightLineDistM,
         max_shared_overlap_pct: maxSharedOverlapPct,
+        min_dist_to_school_m: minDistToSchoolM,
         seed: randomSeed
       };
 
@@ -1280,6 +1282,25 @@
             />
             <div style="font-size: 11px; color: #94a3b8; margin-top: 3px; line-height: 1.35;">
               Pickup collection buffer allocated at each scheduled stop to gather, register, and safely board pupils.
+            </div>
+          </div>
+
+          <div class="control-group" style="margin-top: 10px;">
+            <label class="control-label" for="min-dist-school">
+              <span>Min Distance to School</span>
+              <span class="control-value">{formatDistance(minDistToSchoolM)}</span>
+            </label>
+            <input
+              id="min-dist-school"
+              type="range"
+              min="50"
+              max="500"
+              step="25"
+              bind:value={minDistToSchoolM}
+              onchange={fetchAndAnalyzeArea}
+            />
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 3px; line-height: 1.35;">
+              Suppresses pickup stops appearing closer than {formatDistance(minDistToSchoolM)} straight line or route distance from school.
             </div>
           </div>
 

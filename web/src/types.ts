@@ -26,6 +26,7 @@ export interface BiciConfig {
   circuity: number;
   max_straight_line_dist_m: number;
   max_shared_overlap_pct: number;
+  min_dist_to_school_m: number;
   seed?: number;
 }
 

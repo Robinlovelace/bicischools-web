@@ -61,6 +61,8 @@ pub struct BiciConfig {
     pub max_straight_line_dist_m: f64, // Straight-line Euclidean radius from school
     #[serde(default = "default_max_shared_overlap")]
     pub max_shared_overlap_pct: f64, // Maximum allowed shared edge overlap % (e.g. 40.0)
+    #[serde(default = "default_min_dist_to_school")]
+    pub min_dist_to_school_m: f64, // Minimum distance to school to prevent stops too close to arrival
     #[serde(default = "default_seed")]
     pub seed: u64,
 }
@@ -76,6 +78,7 @@ fn default_max_route_distance() -> f64 { 5000.0 }
 fn default_circuity() -> f64 { 1.25 }
 fn default_max_straight_line_dist() -> f64 { 1000.0 }
 fn default_max_shared_overlap() -> f64 { 40.0 }
+fn default_min_dist_to_school() -> f64 { 200.0 }
 fn default_seed() -> u64 { 42 }
 
 impl Default for BiciConfig {
@@ -97,6 +100,7 @@ impl Default for BiciConfig {
             circuity: default_circuity(),
             max_straight_line_dist_m: default_max_straight_line_dist(),
             max_shared_overlap_pct: default_max_shared_overlap(),
+            min_dist_to_school_m: default_min_dist_to_school(),
             seed: default_seed(),
         }
     }
@@ -204,6 +208,7 @@ impl BiciEngine {
                     config.group_speed_kmh,
                     config.dwell_time_mins,
                     350.0,
+                    config.min_dist_to_school_m,
                     Some(&self.graph),
                     config.school_name.as_deref(),
                 )

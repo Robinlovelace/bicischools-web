@@ -97,6 +97,7 @@ pub fn generate_route_timetable(
     group_speed_kmh: f64,      // e.g. 11.0
     dwell_time_mins: f64,      // e.g. 1.0
     target_stop_spacing_m: f64,// e.g. 350.0
+    min_dist_to_school_m: f64, // e.g. 200.0 (prevents intermediate stops too close to school)
     graph: Option<&StreetGraph>,
     school_name: Option<&str>,
 ) -> RouteTimetable {
@@ -114,6 +115,11 @@ pub fn generate_route_timetable(
             stops: Vec::new(),
         };
     }
+
+    let total_dist_m: f64 = (0..coords.len() - 1)
+        .map(|i| haversine_distance(coords[i].x, coords[i].y, coords[i + 1].x, coords[i + 1].y))
+        .sum();
+    let school_pt = coords[coords.len() - 1];
 
     // 1. Identify stop coordinates along route
     let mut raw_stops: Vec<(f64, f64, f64)> = Vec::new(); // (lng, lat, cumulative_dist)
@@ -134,18 +140,23 @@ pub fn generate_route_timetable(
             let stop_lat = p1.y + t * (p2.y - p1.y);
             let stop_dist = current_dist + needed;
 
-            raw_stops.push((stop_lng, stop_lat, stop_dist));
-            last_stop_dist = stop_dist;
+            let dist_remaining_to_school_m = total_dist_m - stop_dist;
+            let straight_line_to_school_m = haversine_distance(stop_lng, stop_lat, school_pt.x, school_pt.y);
+
+            // Suppress intermediate stops closer than min_dist_to_school_m to the school
+            if dist_remaining_to_school_m >= min_dist_to_school_m
+                && straight_line_to_school_m >= min_dist_to_school_m
+            {
+                raw_stops.push((stop_lng, stop_lat, stop_dist));
+                last_stop_dist = stop_dist;
+            }
         }
 
         current_dist += seg_len;
     }
 
     // Final destination stop (School)
-    let last_pt = coords[coords.len() - 1];
-    raw_stops.push((last_pt.x, last_pt.y, current_dist));
-
-    let total_dist_m = current_dist;
+    raw_stops.push((school_pt.x, school_pt.y, total_dist_m));
 
     // 2. Parse target arrival time into seconds from midnight
     let target_arrival_secs = parse_hhmm_to_seconds(target_arrival_hhmm).unwrap_or(8 * 3600 + 45 * 60);
