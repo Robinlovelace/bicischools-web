@@ -256,7 +256,6 @@ export function setupMapLayers(map: MapLibreMap): void {
       layout: {
         'text-field': ['get', 'stop_label'],
         'text-size': 10,
-        'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
         'text-allow-overlap': true
       },
       paint: {

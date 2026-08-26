@@ -16,10 +16,13 @@
     FileSpreadsheet,
     FileCode,
     Sparkles,
-    Eye
+    Eye,
+    Globe,
+    Compass
   } from '@lucide/svelte';
   import { ensureWasmInitialized, engineInstance, loadPreset } from './lib/engine';
   import { fetchOsmNetworkAroundPoint, searchNearbySchools } from './lib/overpass';
+  import { geocodeLocation, type GeocodeResult } from './lib/geocode';
   import { setupMapLayers, ROUTE_COLORS, emptyFeatureCollection } from './lib/map/layers';
   import type {
     BiciAnalysisOutput,
@@ -42,6 +45,12 @@
   let isPickingSchool = $state<boolean>(false);
   let activeTimetableRoute = $state<number>(1);
   let showActualRoutes = $state<boolean>(true);
+
+  // Search & Geocoding State
+  let searchQuery = $state<string>('');
+  let searchResults = $state<GeocodeResult[]>([]);
+  let isSearching = $state<boolean>(false);
+  let showSearchDropdown = $state<boolean>(false);
 
   // Configuration
   let schoolLng = $state<number>(-9.12191);
@@ -121,6 +130,40 @@
     });
   });
 
+  async function handleGeocodeSearch() {
+    if (!searchQuery.trim()) return;
+    isSearching = true;
+    statusMessage = `Searching for "${searchQuery}"...`;
+    try {
+      searchResults = await geocodeLocation(searchQuery);
+      showSearchDropdown = searchResults.length > 0;
+      if (searchResults.length === 0) {
+        statusMessage = `No locations found for "${searchQuery}"`;
+      } else {
+        statusMessage = `Found ${searchResults.length} places.`;
+      }
+    } catch (err: any) {
+      statusMessage = `Geocoding error: ${err.message}`;
+    } finally {
+      isSearching = false;
+    }
+  }
+
+  async function selectGeocodedPlace(place: GeocodeResult) {
+    showSearchDropdown = false;
+    schoolLng = place.lng;
+    schoolLat = place.lat;
+    schoolName = place.name;
+    searchQuery = place.display_name;
+    selectedPresetId = '';
+
+    if (map) {
+      map.flyTo({ center: [schoolLng, schoolLat], zoom: 15, duration: 900 });
+    }
+    updateSchoolMarker();
+    await fetchAndAnalyzeArea();
+  }
+
   async function loadSelectedPreset(presetId: string) {
     selectedPresetId = presetId;
     loading = true;
@@ -132,14 +175,13 @@
       schoolLng = preset.school.lng;
       schoolLat = preset.school.lat;
       schoolName = preset.school.name;
+      searchQuery = `${preset.school.name}, ${preset.city}`;
 
       if (map) {
         map.flyTo({ center: [schoolLng, schoolLat], zoom: 14.2, duration: 800 });
 
-        // Update School Point
         updateSchoolMarker();
 
-        // If preset includes pre-calculated rnet & candidate routes
         if (preset.rnet) {
           const rnetSource = map.getSource('route-network') as maplibregl.GeoJSONSource;
           if (rnetSource) rnetSource.setData(preset.rnet);
@@ -155,7 +197,6 @@
           if (centsSource) centsSource.setData(preset.cents);
         }
 
-        // If Almada preset with actual CicloExpresso stops
         const actualSource = map.getSource('actual-routes') as maplibregl.GeoJSONSource;
         if (actualSource) {
           if (preset.actual_stops_geojson && showActualRoutes) {
@@ -165,7 +206,6 @@
           }
         }
 
-        // Generate timetables for display
         if (preset.candidate_routes && preset.candidate_routes.features) {
           const mockTimetables: RouteTimetable[] = preset.candidate_routes.features.map((feat: any, idx: number) => {
             const coords = feat.geometry.coordinates || [];
@@ -357,6 +397,10 @@
         const centsSource = map.getSource('matched-origins') as maplibregl.GeoJSONSource;
         if (centsSource) centsSource.setData(result.matched_origins_geojson);
 
+        // Clear actual routes if not in preset
+        const actualSource = map.getSource('actual-routes') as maplibregl.GeoJSONSource;
+        if (actualSource) actualSource.setData(emptyFeatureCollection());
+
         updateTimetableStopsLayer();
       }
 
@@ -389,6 +433,7 @@
     schoolLng = school.lng;
     schoolLat = school.lat;
     schoolName = school.name;
+    selectedPresetId = '';
     updateSchoolMarker();
     if (map) {
       map.flyTo({ center: [schoolLng, schoolLat], zoom: 15 });
@@ -443,8 +488,42 @@
     <div class="logo-badge">🚲</div>
     <div class="brand-text">
       <h1>bicischools</h1>
-      <span>Bike Bus Planning & Prioritisation Platform</span>
+      <span>Bike Bus Planning & Prioritisation</span>
     </div>
+  </div>
+
+  <!-- Search Bar in Header -->
+  <div style="position: relative; max-width: 380px; flex: 1; margin: 0 16px;">
+    <div style="display: flex; gap: 4px;">
+      <input
+        type="text"
+        placeholder="Search school, city, or address (e.g. Bracken Edge, Leeds)..."
+        bind:value={searchQuery}
+        onkeydown={(e) => {
+          if (e.key === 'Enter') handleGeocodeSearch();
+        }}
+        style="padding-left: 32px; background: #131d2e; font-size: 12px; height: 34px;"
+      />
+      <Search class="w-4 h-4 text-slate-400" style="position: absolute; left: 10px; top: 9px; pointer-events: none;" />
+      <button class="btn btn-secondary" style="height: 34px; padding: 0 12px; font-size: 12px;" onclick={handleGeocodeSearch} disabled={isSearching}>
+        Search
+      </button>
+    </div>
+
+    <!-- Dropdown of Geocoding Results -->
+    {#if showSearchDropdown && searchResults.length > 0}
+      <div style="position: absolute; top: 40px; left: 0; right: 0; background: #1e293b; border: 1px solid #334155; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 100; max-height: 250px; overflow-y: auto;">
+        {#each searchResults as place}
+          <button
+            style="width: 100%; text-align: left; padding: 8px 12px; background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.05); color: #fff; cursor: pointer; display: flex; flex-direction: column;"
+            onclick={() => selectGeocodedPlace(place)}
+          >
+            <span style="font-weight: 600; font-size: 12px; color: #38bdf8;">{place.name}</span>
+            <span style="font-size: 11px; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{place.display_name}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
   </div>
 
   <div class="header-actions">
@@ -463,7 +542,7 @@
       }}
     >
       <MapPin class="w-4 h-4" style="color: #f87171;" />
-      {isPickingSchool ? 'Click map to place school...' : 'Pick School on Map'}
+      {isPickingSchool ? 'Click map to place school...' : 'Pick on Map'}
     </button>
 
     <button class="btn btn-primary" onclick={fetchAndAnalyzeArea} disabled={loading}>
