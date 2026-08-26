@@ -648,13 +648,6 @@
   </div>
 
   <div class="header-actions">
-    {#if loading}
-      <span style="font-size: 12px; color: #38bdf8; display: flex; align-items: center; gap: 4px;">
-        <RefreshCw class="w-3.5 h-3.5 animate-spin" />
-        {statusMessage}
-      </span>
-    {/if}
-
     <button
       class="btn btn-secondary"
       onclick={() => {
@@ -667,8 +660,13 @@
     </button>
 
     <button class="btn btn-primary" onclick={fetchAndAnalyzeArea} disabled={loading}>
-      <Sparkles class="w-4 h-4" />
-      Run Live Analysis
+      {#if loading}
+        <RefreshCw class="w-4 h-4 animate-spin" />
+        Calculating...
+      {:else}
+        <Sparkles class="w-4 h-4" />
+        Run Live Analysis
+      {/if}
     </button>
 
     <button class="btn btn-secondary" onclick={exportGeoJson} disabled={!analysisResult}>
@@ -677,6 +675,10 @@
     </button>
   </div>
 </header>
+
+{#if loading}
+  <div class="top-loading-bar"></div>
+{/if}
 
 <div class="workspace">
   <!-- Left Sidebar -->
@@ -999,6 +1001,18 @@
 
   <!-- Main Map Container -->
   <main class="map-container" style="position: relative;">
+    {#if loading}
+      <div class="map-loading-indicator">
+        <div class="loading-spinner-ring">
+          <RefreshCw class="w-5 h-5 animate-spin" />
+        </div>
+        <div class="loading-details">
+          <div class="loading-title">Calculating Bike Buses</div>
+          <div class="loading-sub">{statusMessage}</div>
+        </div>
+      </div>
+    {/if}
+
     <button
       class="sidebar-toggle-btn"
       onclick={toggleSidebar}
