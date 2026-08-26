@@ -55,6 +55,8 @@ pub struct BiciConfig {
     pub dwell_time_mins: f64,
     #[serde(default = "default_max_route_distance")]
     pub max_route_distance_m: f64,
+    #[serde(default = "default_circuity")]
+    pub circuity: f64, // 1.0 = direct/shortest, 1.25 = moderate meandering, 2.0 = high circuity
 }
 
 fn default_min_trips() -> f64 { 3.0 }
@@ -65,6 +67,7 @@ fn default_arrival_time() -> String { "08:45".to_string() }
 fn default_group_speed() -> f64 { 11.0 }
 fn default_dwell_time() -> f64 { 1.0 }
 fn default_max_route_distance() -> f64 { 5000.0 }
+fn default_circuity() -> f64 { 1.25 }
 
 impl Default for BiciConfig {
     fn default() -> Self {
@@ -82,6 +85,7 @@ impl Default for BiciConfig {
             group_speed_kmh: default_group_speed(),
             dwell_time_mins: default_dwell_time(),
             max_route_distance_m: default_max_route_distance(),
+            circuity: default_circuity(),
         }
     }
 }
@@ -143,13 +147,14 @@ impl BiciEngine {
             anyhow::bail!("No valid origin nodes found within catchment area");
         }
 
-        // 3. Route all origins to school
+        // 3. Route all origins to school with circuity parameter
         let individual_routes = route_all_origins_to_school(
             &self.graph,
             dest_node,
             &origins_to_route,
             config.routing_profile,
             config.max_route_distance_m,
+            config.circuity,
         );
 
         if individual_routes.is_empty() {

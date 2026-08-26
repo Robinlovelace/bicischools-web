@@ -65,6 +65,7 @@
   let groupSpeedKmh = $state<number>(11.0);
   let dwellTimeMins = $state<number>(1.0);
   let catchmentRadiusM = $state<number>(2500);
+  let circuity = $state<number>(1.25);
 
   // Analysis Outputs
   let analysisResult = $state<BiciAnalysisOutput | null>(null);
@@ -380,7 +381,8 @@
         target_arrival_time: targetArrivalTime,
         group_speed_kmh: groupSpeedKmh,
         dwell_time_mins: dwellTimeMins,
-        max_route_distance_m: catchmentRadiusM * 1.5
+        max_route_distance_m: catchmentRadiusM * 1.5,
+        circuity: circuity
       };
 
       const result = engineInstance.runAnalysis(config);
@@ -731,6 +733,17 @@
               <span class="control-value">{maxRoutes}</span>
             </label>
             <input id="max-routes" type="range" min="1" max="5" step="1" bind:value={maxRoutes} onchange={fetchAndAnalyzeArea} />
+          </div>
+
+          <div class="control-group">
+            <label class="control-label" for="circuity">
+              <span>Route Circuity / Pickup Meandering</span>
+              <span class="control-value">{circuity.toFixed(2)}x</span>
+            </label>
+            <input id="circuity" type="range" min="1.0" max="2.2" step="0.05" bind:value={circuity} onchange={fetchAndAnalyzeArea} />
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 3px; line-height: 1.35;">
+              Higher circuity attracts routes to detour and weave through dense residential streets to pick up more students instead of heading straight to school.
+            </div>
           </div>
         </div>
 

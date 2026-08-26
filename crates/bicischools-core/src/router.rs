@@ -1,5 +1,5 @@
 use crate::cost::RoutingProfile;
-use crate::graph::StreetGraph;
+use crate::graph::{haversine_distance, StreetGraph};
 use crate::uptake::calculate_go_dutch_school;
 use geo::{Coord, LineString};
 use serde::{Deserialize, Serialize};
@@ -40,17 +40,60 @@ impl PartialOrd for State {
     }
 }
 
-/// Computes routes from multiple origins to a single destination school
+/// Computes student density at each graph node to attract circuitous/meandering routes
+fn compute_node_student_densities(
+    graph: &StreetGraph,
+    origins: &[(String, usize, f64)],
+) -> Vec<f64> {
+    let mut density = vec![0.0; graph.nodes.len()];
+    let search_radius_m = 350.0;
+
+    for &(_, origin_node, num_students) in origins {
+        if origin_node >= graph.nodes.len() {
+            continue;
+        }
+        let o_node = &graph.nodes[origin_node];
+
+        // Find surrounding nodes within radius
+        for (idx, node) in graph.nodes.iter().enumerate() {
+            let d = haversine_distance(o_node.lng, o_node.lat, node.lng, node.lat);
+            if d <= search_radius_m {
+                let weight = (-d / 120.0).exp();
+                density[idx] += num_students * weight;
+            }
+        }
+    }
+
+    // Normalize density to [0.0, 1.0]
+    let max_density = density.iter().cloned().fold(0.0, f64::max);
+    if max_density > 0.0 {
+        for val in &mut density {
+            *val /= max_density;
+        }
+    }
+
+    density
+}
+
+/// Computes routes from multiple origins to a single destination school with a circuity/meandering parameter
 pub fn route_all_origins_to_school(
     graph: &StreetGraph,
     dest_node: usize,
     origin_nodes_and_students: &[(String, usize, f64)],
     profile: RoutingProfile,
     max_distance_m: f64,
+    circuity: f64, // 1.0 = direct/shortest, 1.3 = moderate meandering, 2.0 = high circuity
 ) -> Vec<RouteResult> {
     if graph.nodes.is_empty() || dest_node >= graph.nodes.len() {
         return Vec::new();
     }
+
+    // Pre-calculate node densities if circuity > 1.0
+    let node_densities = if circuity > 1.001 {
+        compute_node_student_densities(graph, origin_nodes_and_students)
+    } else {
+        Vec::new()
+    };
 
     let mut reverse_incoming: Vec<Vec<usize>> = vec![Vec::new(); graph.nodes.len()];
     for edge in &graph.edges {
@@ -67,6 +110,8 @@ pub fn route_all_origins_to_school(
         node: dest_node,
     });
 
+    let circuity_attraction = (circuity - 1.0).max(0.0) * 3.5;
+
     while let Some(State { cost, node }) = heap.pop() {
         if cost > dist[node] {
             continue;
@@ -75,7 +120,18 @@ pub fn route_all_origins_to_school(
         for &edge_id in &reverse_incoming[node] {
             let edge = &graph.edges[edge_id];
             let u = edge.from_node;
-            let edge_cost = edge.attributes.calculate_cost(edge.length_m, profile);
+            let mut edge_cost = edge.attributes.calculate_cost(edge.length_m, profile);
+
+            // If circuity > 1.0, discount edges with high student density
+            // encouraging routes to detour through residential neighborhoods to collect students
+            if circuity_attraction > 0.0 && !node_densities.is_empty() {
+                let d_u = node_densities[u];
+                let d_v = node_densities[node];
+                let edge_density = (d_u + d_v) * 0.5;
+
+                let discount = 1.0 / (1.0 + circuity_attraction * edge_density);
+                edge_cost *= discount;
+            }
 
             if edge_cost.is_finite() && dist[node] + edge_cost < dist[u] {
                 dist[u] = dist[node] + edge_cost;
@@ -127,7 +183,7 @@ pub fn route_all_origins_to_school(
             }
         }
 
-        if curr != dest_node || total_length_m > max_distance_m || total_length_m <= 0.0 {
+        if curr != dest_node || total_length_m > (max_distance_m * circuity) || total_length_m <= 0.0 {
             continue;
         }
 

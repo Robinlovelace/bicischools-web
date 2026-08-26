@@ -23,6 +23,7 @@ export interface BiciConfig {
   group_speed_kmh: number;
   dwell_time_mins: number;
   max_route_distance_m: number;
+  circuity: number;
 }
 
 export interface CandidateRoute {
