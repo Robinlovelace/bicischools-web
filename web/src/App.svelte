@@ -808,7 +808,43 @@
       <!-- TAB 2: CUSTOM EXPLORE -->
       {#if activeTab === 'custom'}
         <div class="card">
-          <div class="card-title">Target School Location</div>
+          <div class="card-title">Search School or Address</div>
+          <div style="display: flex; gap: 6px;">
+            <input
+              type="text"
+              placeholder="e.g. Bracken Edge Leeds, Manley Park..."
+              bind:value={searchQuery}
+              onkeydown={(e) => {
+                if (e.key === 'Enter') handleGeocodeSearch();
+              }}
+              style="font-size: 12px; height: 36px; background: #131d2e;"
+            />
+            <button class="btn btn-primary" onclick={handleGeocodeSearch} disabled={isSearching} style="padding: 0 14px; flex-shrink: 0;">
+              {#if isSearching}
+                <RefreshCw class="w-3.5 h-3.5 animate-spin" />
+              {:else}
+                <Search class="w-3.5 h-3.5" />
+              {/if}
+            </button>
+          </div>
+
+          {#if searchResults.length > 0}
+            <div style="margin-top: 10px; max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;">
+              {#each searchResults as place}
+                <button
+                  class="search-sidebar-item"
+                  onclick={() => selectGeocodedPlace(place)}
+                >
+                  <div style="font-weight: 600; color: #38bdf8; font-size: 12px;">{place.name}</div>
+                  <div style="font-size: 11px; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{place.display_name}</div>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+
+        <div class="card">
+          <div class="card-title">Target School Coordinates & Catchment</div>
           <div class="control-group">
             <label class="control-label" for="school-name">School Name</label>
             <input id="school-name" type="text" bind:value={schoolName} />
@@ -838,7 +874,11 @@
               <Search class="w-3.5 h-3.5" /> Find Nearby OSM Schools
             </button>
             <button class="btn btn-primary btn-block" onclick={fetchAndAnalyzeArea} disabled={loading}>
-              <RefreshCw class="w-3.5 h-3.5" /> Fetch & Plan
+              {#if loading}
+                <RefreshCw class="w-3.5 h-3.5 animate-spin" /> Calculating...
+              {:else}
+                <RefreshCw class="w-3.5 h-3.5" /> Fetch & Plan
+              {/if}
             </button>
           </div>
 
