@@ -1,7 +1,8 @@
 use crate::bicibus::{CandidateRoute, MatchedOrigin};
-use crate::graph::haversine_distance;
+use crate::graph::{haversine_distance, StreetGraph};
 use geo::Coord;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimetableStop {
@@ -29,6 +30,65 @@ pub struct RouteTimetable {
     pub stops: Vec<TimetableStop>,
 }
 
+/// Helper to extract primary road and intersecting cross-street name near a coordinate
+fn get_stop_street_info(graph: &StreetGraph, lng: f64, lat: f64) -> (Option<String>, Option<String>) {
+    let nearest_node_idx = match graph.find_nearest_node(lng, lat) {
+        Some(idx) => idx,
+        None => return (None, None),
+    };
+
+    let node = &graph.nodes[nearest_node_idx];
+    let dist_to_node = haversine_distance(lng, lat, node.lng, node.lat);
+
+    let mut primary_name: Option<String> = None;
+    let mut cross_name: Option<String> = None;
+
+    // Check outgoing edges from this node
+    for &edge_idx in &node.outgoing_edges {
+        if edge_idx < graph.edges.len() {
+            let edge = &graph.edges[edge_idx];
+            if let Some(ref name) = edge.attributes.name {
+                let clean = name.trim().to_string();
+                if !clean.is_empty() {
+                    if primary_name.is_none() {
+                        primary_name = Some(clean);
+                    } else if primary_name.as_ref() != Some(&clean) && cross_name.is_none() {
+                        cross_name = Some(clean);
+                    }
+                }
+            }
+        }
+    }
+
+    // Check incoming edges
+    if primary_name.is_none() || cross_name.is_none() {
+        for edge in &graph.edges {
+            if edge.to_node == nearest_node_idx {
+                if let Some(ref name) = edge.attributes.name {
+                    let clean = name.trim().to_string();
+                    if !clean.is_empty() {
+                        if primary_name.is_none() {
+                            primary_name = Some(clean);
+                        } else if primary_name.as_ref() != Some(&clean) && cross_name.is_none() {
+                            cross_name = Some(clean);
+                        }
+                    }
+                }
+            }
+            if primary_name.is_some() && cross_name.is_some() {
+                break;
+            }
+        }
+    }
+
+    // Only treat cross street as junction if sufficiently close to the node
+    if dist_to_node > 55.0 {
+        cross_name = None;
+    }
+
+    (primary_name, cross_name)
+}
+
 /// Generates scheduled timetable stops along a candidate bike bus route
 pub fn generate_route_timetable(
     route: &CandidateRoute,
@@ -37,6 +97,8 @@ pub fn generate_route_timetable(
     group_speed_kmh: f64,      // e.g. 11.0
     dwell_time_mins: f64,      // e.g. 1.0
     target_stop_spacing_m: f64,// e.g. 350.0
+    graph: Option<&StreetGraph>,
+    school_name: Option<&str>,
 ) -> RouteTimetable {
     let speed_mps = (group_speed_kmh * 1000.0) / 3600.0;
     let coords: Vec<Coord<f64>> = route.geometry.coords().cloned().collect();
@@ -141,9 +203,11 @@ pub fn generate_route_timetable(
 
     let mut timetable_stops = Vec::new();
     let mut cum_students = 0.0;
+    let mut street_stop_counts: HashMap<String, usize> = HashMap::new();
 
     for (i, &(lng, lat, cum_dist)) in raw_stops.iter().enumerate() {
         let is_last = i == num_stops - 1;
+        let is_first = i == 0;
         let letter = stop_letters.get(i).copied().unwrap_or("S");
         let label = if is_last {
             "Arr".to_string()
@@ -152,11 +216,44 @@ pub fn generate_route_timetable(
         };
 
         let name = if is_last {
-            "School Arrival".to_string()
-        } else if i == 0 {
-            format!("Stop {label} (Origin Start)")
+            if let Some(sname) = school_name {
+                format!("{sname} (Arrival)")
+            } else {
+                "School (Arrival)".to_string()
+            }
+        } else if let Some(g) = graph {
+            let (primary_opt, cross_opt) = get_stop_street_info(g, lng, lat);
+            match (primary_opt, cross_opt) {
+                (Some(primary), Some(cross)) => {
+                    if is_first {
+                        format!("{primary} near junction with {cross} (Start)")
+                    } else {
+                        format!("{primary} near junction with {cross}")
+                    }
+                }
+                (Some(primary), None) => {
+                    let count = street_stop_counts.entry(primary.clone()).or_insert(0);
+                    *count += 1;
+                    if is_first {
+                        format!("{primary}, stop {count} (Start)")
+                    } else {
+                        format!("{primary}, stop {count}")
+                    }
+                }
+                (None, _) => {
+                    if is_first {
+                        format!("Stop {label} (Origin Start)")
+                    } else {
+                        format!("Stop {label}")
+                    }
+                }
+            }
         } else {
-            format!("Stop {label}")
+            if is_first {
+                format!("Stop {label} (Origin Start)")
+            } else {
+                format!("Stop {label}")
+            }
         };
 
         let dist_to_next = if is_last {

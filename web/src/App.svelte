@@ -353,10 +353,25 @@
           const mockTimetables: RouteTimetable[] = preset.candidate_routes.features.map((feat: any, idx: number) => {
             const coords = feat.geometry.coordinates || [];
             const rank = idx + 1;
+            const isLisbon = preset.id === 'lisbon';
+            const isAlmada = preset.id === 'almada';
+
+            const startName = isLisbon
+              ? 'Av. Brasil near Rotunda do Relógio (Start)'
+              : isAlmada
+              ? 'Av. 1º de Maio near junction with R. dos Pescadores (Start)'
+              : `Street Origin near Junction (Start)`;
+
+            const midName = isLisbon
+              ? 'Rua Cidade de Quelimane near Rua Cidade de Bissau'
+              : isAlmada
+              ? 'Av. Afonso de Albuquerque near junction with R. de Lisboa'
+              : `Main Corridor, stop 1`;
+
             const stops = [
               {
                 stop_id: `R${rank}_A`,
-                stop_name: `Stop ${rank}A (Origin Start)`,
+                stop_name: startName,
                 stop_label: `${rank}A`,
                 lng: coords[0]?.[0] || schoolLng,
                 lat: coords[0]?.[1] || schoolLat,
@@ -369,7 +384,7 @@
               },
               {
                 stop_id: `R${rank}_B`,
-                stop_name: `Stop ${rank}B (Midpoint)`,
+                stop_name: midName,
                 stop_label: `${rank}B`,
                 lng: coords[Math.floor(coords.length / 2)]?.[0] || schoolLng,
                 lat: coords[Math.floor(coords.length / 2)]?.[1] || schoolLat,
@@ -382,7 +397,7 @@
               },
               {
                 stop_id: `R${rank}_End`,
-                stop_name: `School Arrival: ${schoolName}`,
+                stop_name: `${schoolName} (Arrival)`,
                 stop_label: 'Arr',
                 lng: schoolLng,
                 lat: schoolLat,

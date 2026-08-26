@@ -200,6 +200,8 @@ impl BiciEngine {
                     config.group_speed_kmh,
                     config.dwell_time_mins,
                     350.0,
+                    Some(&self.graph),
+                    config.school_name.as_deref(),
                 )
             })
             .collect();
